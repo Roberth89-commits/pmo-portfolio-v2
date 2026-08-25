@@ -368,12 +368,12 @@
     </div>
 
     <div class="ai-search-section">
-      <h2>🔍 Assistente IA do Portfólio</h2>
+      <h2>🔍 Assistente IA do Portfólio (Gemini)</h2>
       <p>Pergunte qualquer coisa sobre seus projetos: status, riscos, prazos, recursos, orçamento...</p>
       <div class="search-box">
         <input type="text" class="search-input" id="aiQuery" placeholder="Ex: Quais projetos estão atrasados? Qual o orçamento total de TI?" onkeypress="if(event.key==='Enter') searchAI()">
         <button class="search-btn" id="searchBtn" onclick="searchAI()">
-          <span>⚡</span> Buscar com IA
+          <span>⚡</span> Buscar com Gemini
         </button>
       </div>
       <div class="quick-questions">
@@ -718,7 +718,7 @@
         sourcesDiv.innerHTML = '';
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<span>⚡</span> Buscar com IA';
+        btn.innerHTML = '<span>⚡</span> Buscar com Gemini';
       }
     }
 
