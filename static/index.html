@@ -700,11 +700,11 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="loading-spinner"></span> Analisando...';
       responseDiv.classList.add('active');
-      responseText.innerHTML = '<em>🧠 A IA está analisando seu portfólio...</em>';
+      responseText.innerHTML = '<em>🧠 Gemini está analisando seu portfólio...</em>';
       sourcesDiv.innerHTML = '';
 
       try {
-        const res = await fetch(`${API_URL}/api/ai/search`, {
+        const res = await fetch(`${API_URL}/api/ai/gemini`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: query })
@@ -714,7 +714,7 @@
         responseText.innerHTML = data.answer.replace(/\n/g, '<br>');
         sourcesDiv.innerHTML = data.sources.map(s => `<span class="ai-source-tag">📄 ${s}</span>`).join('');
       } catch (err) {
-        responseText.innerHTML = '❌ Erro ao consultar a IA. Verifique se o servidor está online.';
+        responseText.innerHTML = '❌ Erro ao consultar o Gemini. Verifique se o servidor está online.';
         sourcesDiv.innerHTML = '';
       } finally {
         btn.disabled = false;
