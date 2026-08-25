@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 import models, schemas, database
+import ai_service
 from database import engine, get_db
 import re
 
@@ -192,6 +193,15 @@ def ai_search(query_data: schemas.AIQuery, db: Session = Depends(get_db)):
             sources = ["Portfolio Completo"]
 
     return schemas.AIResponse(answer=answer, sources=sources if sources else ["Portfolio Completo"])
+
+# ============ BUSCA IA COM GEMINI ============
+
+@app.post("/api/ai/gemini", response_model=schemas.AIResponse)
+def ai_gemini_search(query_data: schemas.AIQuery, db: Session = Depends(get_db)):
+    """Busca inteligente usando Google Gemini com contexto dos projetos"""
+    projects = db.query(models.Project).all()
+    result = ai_service.ask_gemini(query_data.query, projects)
+    return schemas.AIResponse(answer=result["answer"], sources=result["sources"])
 
 # Seed de dados iniciais
 @app.on_event("startup")
