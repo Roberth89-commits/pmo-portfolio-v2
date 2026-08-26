@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class ProjectBase(BaseModel):
@@ -23,6 +23,13 @@ class ProjectResponse(ProjectBase):
 
     class Config:
         from_attributes = True
+
+class PaginatedProjects(BaseModel):
+    items: List[ProjectResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
 
 class AIQuery(BaseModel):
     query: str
