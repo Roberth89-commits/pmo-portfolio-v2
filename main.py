@@ -38,12 +38,26 @@ def root():
 
 # ============ CRUD PROJETOS ============
 
-@app.get("/api/projects", response_model=List[schemas.ProjectResponse])
-def list_projects(status: str = None, db: Session = Depends(get_db)):
+@app.get("/api/projects", response_model=schemas.PaginatedProjects)
+def list_projects(status: str = None, page: int = 1, per_page: int = 9, db: Session = Depends(get_db)):
     query = db.query(models.Project)
     if status and status != "todos":
         query = query.filter(models.Project.status == status)
-    return query.all()
+    
+    total = query.count()
+    total_pages = (total + per_page - 1) // per_page
+    page = max(1, min(page, total_pages)) if total_pages > 0 else 1
+    
+    offset = (page - 1) * per_page
+    items = query.offset(offset).limit(per_page).all()
+    
+    return schemas.PaginatedProjects(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages
+    )
 
 @app.get("/api/projects/{project_id}", response_model=schemas.ProjectResponse)
 def get_project(project_id: int, db: Session = Depends(get_db)):
