@@ -96,7 +96,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 </style>
 </head>
 <body>
-<div class="header"><div><h1>🏢 PMO Portfolio Hub</h1><p>Gerenciamento Inteligente de Projetos com IA</p></div><button class="btn" onclick="openModal()">+ Novo Projeto</button></div>
+<div class="header">
+<div><h1>🏢 PMO Portfolio Hub</h1><p>Gerenciamento Inteligente de Projetos com IA</p></div>
+<div style="display:flex;align-items:center;gap:12px">
+<div id="googleBtn"></div>
+<div id="userInfo" style="display:none;align-items:center;gap:10px">
+<img id="userPic" src="" alt="" style="width:32px;height:32px;border-radius:50%">
+<span id="userName" style="font-size:13px;font-weight:500"></span>
+<button class="btn" style="padding:6px 12px" onclick="logout()">Sair</button>
+</div>
+<button class="btn" id="newProjectBtn" style="display:none" onclick="openModal()">+ Novo Projeto</button>
+</div>
+</div>
 
 <div class="container">
 <div class="stats-grid">
@@ -167,25 +178,63 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <div class="form-group"><label>Prazo</label><input type="text" id="projDeadline" placeholder="Dez/2026"></div>
 </div>
 <div class="form-group"><label>Riscos Principais</label><textarea id="projRisks" placeholder="Liste os principais riscos do projeto"></textarea></div>
+<p id="authNotice" style="display:none;font-size:13px;color:var(--danger);margin-top:-8px;margin-bottom:12px">🔒 Faca login com Google para salvar ou excluir projetos.</p>
 <div class="form-actions">
 <button class="btn btn-danger" id="btnDelete" style="display:none;margin-right:auto;" onclick="deleteProject()">🗑️ Excluir</button>
 <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-<button class="btn btn-primary" onclick="saveProject()">Salvar Projeto</button>
+<button class="btn btn-primary" id="btnSave" onclick="saveProject()">Salvar Projeto</button>
 </div>
 </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 const API_URL=window.location.origin;
+const GOOGLE_CLIENT_ID="SEU_CLIENT_ID_AQUI.apps.googleusercontent.com";
 let projects=[],currentFilter="todos",editingId=null,currentPage=1,totalPages=1;
+let idToken=null,currentUser=null;
+
+function escapeHtml(str){return String(str??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+function handleGoogleLogin(response){idToken=response.credential;try{currentUser=JSON.parse(atob(response.credential.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))}catch(e){currentUser=null}sessionStorage.setItem("g_id_token",idToken);updateAuthUI()}
+
+function initGoogleAuth(){
+  if(typeof google==="undefined"||!google.accounts){setTimeout(initGoogleAuth,300);return}
+  google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:handleGoogleLogin});
+  google.accounts.id.renderButton(document.getElementById("googleBtn"),{theme:"filled_blue",size:"medium",text:"signin_with",shape:"pill"});
+  const saved=sessionStorage.getItem("g_id_token");
+  if(saved){idToken=saved;try{currentUser=JSON.parse(atob(saved.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")))}catch(e){currentUser=null}updateAuthUI()}
+}
+
+function logout(){idToken=null;currentUser=null;sessionStorage.removeItem("g_id_token");if(typeof google!=="undefined"&&google.accounts)google.accounts.id.disableAutoSelect();updateAuthUI();closeModal()}
+
+function updateAuthUI(){
+  const loggedIn=!!idToken;
+  document.getElementById("googleBtn").style.display=loggedIn?"none":"block";
+  document.getElementById("userInfo").style.display=loggedIn?"flex":"none";
+  document.getElementById("newProjectBtn").style.display=loggedIn?"inline-block":"none";
+  if(loggedIn&&currentUser){document.getElementById("userName").textContent=currentUser.name||currentUser.email;document.getElementById("userPic").src=currentUser.picture||""}
+  const btnSave=document.getElementById("btnSave"),btnDelete=document.getElementById("btnDelete"),notice=document.getElementById("authNotice");
+  if(btnSave)btnSave.style.display=loggedIn?"inline-block":"none";
+  if(notice)notice.style.display=loggedIn?"none":"block";
+  if(!loggedIn&&btnDelete)btnDelete.style.display="none";
+}
+
+function authHeaders(){return idToken?{"Authorization":"Bearer "+idToken}:{}}
+
+async function handleAuthError(res){
+  if(res.status===401){showToast("Sessao expirada. Faca login novamente.","error");logout();return true}
+  if(res.status===403){showToast("Sua conta nao tem permissao para editar.","error");return true}
+  return false
+}
 
 function renderPagination(){const container=document.getElementById("pagination");if(!container)return;if(totalPages<=1){container.innerHTML="";return}let html='<div class="pagination">';html+=`<button class="page-btn" onclick="loadProjects(${currentPage-1})" ${currentPage===1?"disabled":""}>◀ Anterior</button>`;html+=`<span class="page-info">Pagina ${currentPage} de ${totalPages}</span>`;html+=`<button class="page-btn" onclick="loadProjects(${currentPage+1})" ${currentPage===totalPages?"disabled":""}>Proxima ▶</button>`;html+='</div>';container.innerHTML=html}
 
 async function loadProjects(page=1){try{currentPage=page;const url=currentFilter==="todos"?`${API_URL}/api/projects?page=${page}&per_page=9`:`${API_URL}/api/projects?status=${currentFilter}&page=${page}&per_page=9`;const res=await fetch(url);const data=await res.json();projects=data.items||[];totalPages=data.total_pages||1;renderProjects();renderPagination();updateStats()}catch(err){console.error(err);document.getElementById("projectsGrid").innerHTML=`<div class="empty-state" style="grid-column:1/-1"><h3>⚠️ Erro ao carregar projetos</h3><p>Verifique se o servidor esta rodando em ${API_URL}</p></div>`;document.getElementById("pagination").innerHTML=""}}
 
-function renderProjects(){const grid=document.getElementById("projectsGrid");if(projects.length===0){grid.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><h3>Nenhum projeto encontrado</h3><p>Cadastre seu primeiro projeto clicando em "Novo Projeto".</p></div>`;return}grid.innerHTML=projects.map(p=>`<div class="project-card" onclick="editProject(${p.id})"><div class="project-header"><span class="project-code">${p.code||"N/A"}</span><span class="status-badge status-${p.status}">${formatStatus(p.status)}</span></div><h3>${p.name}</h3><p>${p.description||"Sem descricao"}</p><div class="project-meta"><span>👤 ${p.manager||"N/A"}</span><span>💰 ${p.budget||"N/A"}</span></div><div class="progress-bar"><div class="progress-fill ${p.progress>=70?"high":p.progress>=40?"medium":"low"}" style="width:${p.progress||0}%"></div></div><div class="project-meta" style="margin-top:8px"><span>📅 ${p.deadline||"N/A"}</span><span>${p.progress||0}%</span></div></div>`).join("")}
+function renderProjects(){const grid=document.getElementById("projectsGrid");if(projects.length===0){grid.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><h3>Nenhum projeto encontrado</h3><p>Cadastre seu primeiro projeto clicando em "Novo Projeto".</p></div>`;return}grid.innerHTML=projects.map(p=>`<div class="project-card" onclick="editProject(${p.id})"><div class="project-header"><span class="project-code">${escapeHtml(p.code||"N/A")}</span><span class="status-badge status-${escapeHtml(p.status)}">${escapeHtml(formatStatus(p.status))}</span></div><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.description||"Sem descricao")}</p><div class="project-meta"><span>👤 ${escapeHtml(p.manager||"N/A")}</span><span>💰 ${escapeHtml(p.budget||"N/A")}</span></div><div class="progress-bar"><div class="progress-fill ${p.progress>=70?"high":p.progress>=40?"medium":"low"}" style="width:${p.progress||0}%"></div></div><div class="project-meta" style="margin-top:8px"><span>📅 ${escapeHtml(p.deadline||"N/A")}</span><span>${p.progress||0}%</span></div></div>`).join("")}
 
 function formatStatus(s){const map={"em-andamento":"Em Andamento",concluido:"Concluido",atrasado:"Atrasado",planejado:"Planejado"};return map[s]||s}
 
@@ -197,19 +246,21 @@ function openModal(){editingId=null;document.getElementById("modalTitle").textCo
 function closeModal(){document.getElementById("modal").classList.remove("active");editingId=null}
 function clearForm(){document.getElementById("projId").value="";document.getElementById("projCode").value="";document.getElementById("projName").value="";document.getElementById("projDesc").value="";document.getElementById("projStatus").value="planejado";document.getElementById("projPriority").value="media";document.getElementById("projManager").value="";document.getElementById("projBudget").value="";document.getElementById("projProgress").value=0;document.getElementById("projDeadline").value="";document.getElementById("projRisks").value=""}
 
-function editProject(id){const p=projects.find(proj=>proj.id===id);if(!p)return;editingId=id;document.getElementById("modalTitle").textContent="✏️ Editar Projeto";document.getElementById("btnDelete").style.display="block";document.getElementById("projCode").value=p.code||"";document.getElementById("projName").value=p.name||"";document.getElementById("projDesc").value=p.description||"";document.getElementById("projStatus").value=p.status||"planejado";document.getElementById("projPriority").value=p.priority||"media";document.getElementById("projManager").value=p.manager||"";document.getElementById("projBudget").value=(p.budget||"").replace(/[^0-9]/g,"");document.getElementById("projProgress").value=p.progress||0;document.getElementById("projDeadline").value=p.deadline||"";document.getElementById("projRisks").value=p.risks||"";document.getElementById("modal").classList.add("active")}
+function editProject(id){const p=projects.find(proj=>proj.id===id);if(!p)return;editingId=id;document.getElementById("modalTitle").textContent="✏️ Editar Projeto";document.getElementById("btnDelete").style.display=idToken?"block":"none";document.getElementById("projCode").value=p.code||"";document.getElementById("projName").value=p.name||"";document.getElementById("projDesc").value=p.description||"";document.getElementById("projStatus").value=p.status||"planejado";document.getElementById("projPriority").value=p.priority||"media";document.getElementById("projManager").value=p.manager||"";document.getElementById("projBudget").value=(p.budget||"").replace(/[^0-9]/g,"");document.getElementById("projProgress").value=p.progress||0;document.getElementById("projDeadline").value=p.deadline||"";document.getElementById("projRisks").value=p.risks||"";document.getElementById("modal").classList.add("active")}
 
-async function saveProject(){const name=document.getElementById("projName").value.trim();if(!name){showToast("Por favor, preencha o nome do projeto.","error");return}const budgetRaw=document.getElementById("projBudget").value.trim();const budget=budgetRaw?`R$ ${budgetRaw}`:null;const data={code:document.getElementById("projCode").value.trim()||`PRJ-${new Date().getFullYear()}-${String(projects.length+1).padStart(3,"0")}`,name:name,description:document.getElementById("projDesc").value.trim()||null,status:document.getElementById("projStatus").value,priority:document.getElementById("projPriority").value,manager:document.getElementById("projManager").value.trim()||null,budget:budget,progress:parseInt(document.getElementById("projProgress").value)||0,deadline:document.getElementById("projDeadline").value.trim()||null,risks:document.getElementById("projRisks").value.trim()||null};try{const url=editingId?`${API_URL}/api/projects/${editingId}`:`${API_URL}/api/projects`;const method=editingId?"PUT":"POST";const res=await fetch(url,{method:method,headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(res.ok){showToast(editingId?"Projeto atualizado!":"Projeto cadastrado!","success");closeModal();loadProjects(currentPage)}else{const err=await res.json();showToast(err.detail||"Erro ao salvar projeto.","error")}}catch(err){showToast("Erro de conexao com o servidor.","error")}}
+async function saveProject(){if(!idToken){showToast("Faca login com Google para salvar.","error");return}const name=document.getElementById("projName").value.trim();if(!name){showToast("Por favor, preencha o nome do projeto.","error");return}const budgetRaw=document.getElementById("projBudget").value.trim();const budget=budgetRaw?`R$ ${budgetRaw}`:null;const data={code:document.getElementById("projCode").value.trim()||`PRJ-${new Date().getFullYear()}-${String(projects.length+1).padStart(3,"0")}`,name:name,description:document.getElementById("projDesc").value.trim()||null,status:document.getElementById("projStatus").value,priority:document.getElementById("projPriority").value,manager:document.getElementById("projManager").value.trim()||null,budget:budget,progress:parseInt(document.getElementById("projProgress").value)||0,deadline:document.getElementById("projDeadline").value.trim()||null,risks:document.getElementById("projRisks").value.trim()||null};try{const url=editingId?`${API_URL}/api/projects/${editingId}`:`${API_URL}/api/projects`;const method=editingId?"PUT":"POST";const res=await fetch(url,{method:method,headers:{"Content-Type":"application/json",...authHeaders()},body:JSON.stringify(data)});if(res.ok){showToast(editingId?"Projeto atualizado!":"Projeto cadastrado!","success");closeModal();loadProjects(currentPage)}else if(!(await handleAuthError(res))){const err=await res.json();showToast(err.detail||"Erro ao salvar projeto.","error")}}catch(err){showToast("Erro de conexao com o servidor.","error")}}
 
-async function deleteProject(){if(!editingId)return;if(!confirm("Tem certeza que deseja excluir este projeto?"))return;try{const res=await fetch(`${API_URL}/api/projects/${editingId}`,{method:"DELETE"});if(res.ok){showToast("Projeto excluido!","success");closeModal();loadProjects(currentPage)}else{showToast("Erro ao excluir projeto.","error")}}catch(err){showToast("Erro de conexao.","error")}}
+async function deleteProject(){if(!editingId)return;if(!idToken){showToast("Faca login com Google para excluir.","error");return}if(!confirm("Tem certeza que deseja excluir este projeto?"))return;try{const res=await fetch(`${API_URL}/api/projects/${editingId}`,{method:"DELETE",headers:authHeaders()});if(res.ok){showToast("Projeto excluido!","success");closeModal();loadProjects(currentPage)}else if(!(await handleAuthError(res))){showToast("Erro ao excluir projeto.","error")}}catch(err){showToast("Erro de conexao.","error")}}
 
 function setQuery(q){document.getElementById("aiQuery").value=q;searchAI()}
 
-async function searchAI(){const query=document.getElementById("aiQuery").value.trim();const btn=document.getElementById("searchBtn");const responseDiv=document.getElementById("aiResponse");const responseText=document.getElementById("aiResponseText");const sourcesDiv=document.getElementById("aiSources");if(!query)return;btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span> Consultando Gemini...';responseDiv.classList.add("active");responseText.innerHTML="<em>🧠 Gemini esta analisando seu portfolio...</em>";sourcesDiv.innerHTML="";try{const res=await fetch(`${API_URL}/api/ai/gemini`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:query})});const data=await res.json();responseText.innerHTML=data.answer.replace(/\n/g,"<br>");sourcesDiv.innerHTML=data.sources.map(s=>`<span class="ai-source-tag">📄 ${s}</span>`).join("")}catch(err){responseText.innerHTML="❌ Erro ao consultar o Gemini. Verifique se a API key esta configurada.";sourcesDiv.innerHTML=""}finally{btn.disabled=false;btn.innerHTML="<span>⚡</span> Buscar com Gemini"}}
+async function searchAI(){const query=document.getElementById("aiQuery").value.trim();const btn=document.getElementById("searchBtn");const responseDiv=document.getElementById("aiResponse");const responseText=document.getElementById("aiResponseText");const sourcesDiv=document.getElementById("aiSources");if(!query)return;btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span> Consultando Gemini...';responseDiv.classList.add("active");responseText.innerHTML="<em>🧠 Gemini esta analisando seu portfolio...</em>";sourcesDiv.innerHTML="";try{const res=await fetch(`${API_URL}/api/ai/gemini`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:query})});const data=await res.json();responseText.textContent=data.answer;sourcesDiv.innerHTML=data.sources.map(s=>`<span class="ai-source-tag">📄 ${escapeHtml(s)}</span>`).join("")}catch(err){responseText.textContent="❌ Erro ao consultar o Gemini. Verifique se a API key esta configurada.";sourcesDiv.innerHTML=""}finally{btn.disabled=false;btn.innerHTML="<span>⚡</span> Buscar com Gemini"}}
 
 function showToast(msg,type="success"){const toast=document.getElementById("toast");toast.textContent=msg;toast.className=`toast ${type} show`;setTimeout(()=>toast.classList.remove("show"),3000)}
 
 loadProjects(1);
+updateAuthUI();
+initGoogleAuth();
 </script>
 </body>
 </html>

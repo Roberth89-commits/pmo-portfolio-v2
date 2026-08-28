@@ -4,10 +4,12 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
 import models, schemas, database
 import ai_service
+import auth
 from database import engine, get_db
 import re
 
@@ -19,7 +21,7 @@ app = FastAPI(title="PMO Portfolio Platform", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -67,26 +69,34 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return project
 
 @app.post("/api/projects", response_model=schemas.ProjectResponse)
-def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
+def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db), user=Depends(auth.require_auth)):
     db_project = models.Project(**project.dict())
     db.add(db_project)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ja existe um projeto com esse codigo.")
     db.refresh(db_project)
     return db_project
 
 @app.put("/api/projects/{project_id}", response_model=schemas.ProjectResponse)
-def update_project(project_id: int, project: schemas.ProjectCreate, db: Session = Depends(get_db)):
+def update_project(project_id: int, project: schemas.ProjectCreate, db: Session = Depends(get_db), user=Depends(auth.require_auth)):
     db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
     if not db_project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     for key, value in project.dict().items():
         setattr(db_project, key, value)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ja existe um projeto com esse codigo.")
     db.refresh(db_project)
     return db_project
 
 @app.delete("/api/projects/{project_id}")
-def delete_project(project_id: int, db: Session = Depends(get_db)):
+def delete_project(project_id: int, db: Session = Depends(get_db), user=Depends(auth.require_auth)):
     db_project = db.query(models.Project).filter(models.Project.id == project_id).first()
     if not db_project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
